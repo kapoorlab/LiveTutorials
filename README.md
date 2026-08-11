@@ -1,7 +1,6 @@
 # LiveTutorials
 
-Scaffold for live LangChain / LLM tutorials. This repo ships the **structure and
-dependencies** only — the actual tutorial scripts go under `tutorials/`.
+LangChain / LLM tutorials. .
 
 ## Setup
 
