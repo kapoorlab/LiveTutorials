@@ -12,6 +12,26 @@ cp .env.example .env      # then fill in your keys/endpoints (your responsibilit
 `.env` is loaded automatically by python-dotenv; it is gitignored, the template
 is not.
 
+## Docling (PDF → markdown)
+
+The tutorials that convert PDFs to markdown/RAG input use
+[Docling](https://github.com/docling-project/docling). It is listed in
+`install_requires` (`docling>=2.0.0`), so `pip install -e .` already installs it.
+
+First-run notes:
+
+- **Models download on first use.** Docling fetches its layout/table models from
+  HuggingFace the first time `DocumentConverter().convert(...)` runs — needs
+  internet, a few hundred MB, cached under `HF_HOME` (`~/.cache/huggingface` by
+  default). Later runs are offline.
+- **HuggingFace token.** Set `HF_API_KEY=<your token>` in `.env` (the converter
+  reads it and sets `HF_TOKEN`) to avoid download rate-limits.
+- **Faster downloads (optional):** `pip install hf_transfer` — the tutorials set
+  `HF_HUB_ENABLE_HF_TRANSFER=1`.
+- **Deps / GPU.** Docling pulls in `torch`; on Apple Silicon it uses the **MPS**
+  GPU automatically. Docling 2.x needs **Python 3.9+** (the package metadata
+  still allows 3.8).
+
 ## Layout
 
 ```
