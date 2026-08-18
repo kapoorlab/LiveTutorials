@@ -11,13 +11,15 @@ from .chatbot import (
     get_gwdg_api_key,
     get_gwdg_base_url,
     list_gwdg_models,
-    get_gwdg_chat_model
+    get_gwdg_chat_model,
+    get_session_history
 )
 
 __all__ = ["__version__",
            "get_gwdg_api_key",
            "get_gwdg_base_url",
            "list_gwdg_models",
-           "get_gwdg_chat_model"
+           "get_gwdg_chat_model",
+           "get_session_history"
            
            ]

@@ -2,8 +2,11 @@ import os
 import requests
 from dotenv import find_dotenv, load_dotenv
 from langchain_openai import ChatOpenAI
+from langchain_core.chat_history import BaseChatMessageHistory, InMemoryChatMessageHistory
 
 load_dotenv(find_dotenv(usecwd=True), override=False)
+
+_SESSION_HISTORIES: dict = {} 
 
 def get_gwdg_base_url(base_url: str = None) -> str:
     return base_url or os.environ.get("GWDG_BASE_URL")
@@ -43,3 +46,9 @@ def get_gwdg_chat_model(
         base_url = get_gwdg_base_url(base_url),
         temperature = temperature
     )
+    
+def get_session_history(session_id: str) -> BaseChatMessageHistory:
+    
+    if session_id not in _SESSION_HISTORIES:
+        _SESSION_HISTORIES[session_id] = InMemoryChatMessageHistory() 
+    return _SESSION_HISTORIES[session_id]     
