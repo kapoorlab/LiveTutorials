@@ -23,7 +23,7 @@ LiveTutorials/
 ├── .github/workflows/      # CI (manual trigger)
 ├── src/livetutorials/      # installable package (currently just scaffolding)
 │   ├── __init__.py
-│   ├── kietzmannlab.yaml
+│   ├── kapoorlab.yaml
 │   └── _tests/
 ├── tutorials/              # <- put your tutorial scripts here
 └── data/                   # <- local data / vector DBs (gitignored as needed)
