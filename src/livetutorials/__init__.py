@@ -7,4 +7,17 @@ except ImportError:
 # there. Installing this package (`pip install -e .`) pulls in every dependency
 # the tutorials need (see install_requires in setup.cfg).
 
-__all__ = ["__version__"]
+from .chatbot import (
+    get_gwdg_api_key,
+    get_gwdg_base_url,
+    list_gwdg_models,
+    get_gwdg_chat_model
+)
+
+__all__ = ["__version__",
+           "get_gwdg_api_key",
+           "get_gwdg_base_url",
+           "list_gwdg_models",
+           "get_gwdg_chat_model"
+           
+           ]
