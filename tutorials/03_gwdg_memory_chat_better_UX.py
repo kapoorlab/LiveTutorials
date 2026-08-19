@@ -3,6 +3,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from livetutorials import get_gwdg_chat_model, list_gwdg_models, get_session_history
 from rich.console import Console 
+import readline # noqa: F401
 
 SYSTEM_PROMPT = "You are a helpful assistant."
 console = Console()
@@ -53,7 +54,7 @@ def main(idx):
             break
          console.print("[bold cyan]")
          for chunk in chain.stream({"input": question}, config=config):
-            console.print(f"[bold red] {chunk}", end="")
+            console.print(chunk, end="", flush= True)
          console.print()    
          
 if __name__=="__main__":

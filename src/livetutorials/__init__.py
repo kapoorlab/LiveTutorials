@@ -14,12 +14,14 @@ from .chatbot import (
     get_gwdg_chat_model,
     get_session_history
 )
+from .logos import get_banner
 
 __all__ = ["__version__",
            "get_gwdg_api_key",
            "get_gwdg_base_url",
            "list_gwdg_models",
            "get_gwdg_chat_model",
-           "get_session_history"
+           "get_session_history",
+           "get_banner"
            
            ]
