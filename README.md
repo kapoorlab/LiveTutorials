@@ -1,6 +1,11 @@
 # LiveTutorials
 
-LangChain / LLM tutorials. .
+Hands-on LangChain / LLM tutorials, built live against the **GWDG Chat AI**
+(hosted, OpenAI-compatible) endpoint — no local GPU or model weights needed, just
+an API key.
+
+▶️ **Watch the series on YouTube:**
+[LiveTutorials playlist](https://www.youtube.com/playlist?list=PLP_bRITriPUk)
 
 ## Setup
 
@@ -10,7 +15,39 @@ cp .env.example .env      # then fill in your keys/endpoints (your responsibilit
 ```
 
 `.env` is loaded automatically by python-dotenv; it is gitignored, the template
-is not.
+is not. At minimum set `GWDG_API_KEY` (and `GWDG_BASE_URL` if yours differs from
+the default). Run tutorial `00` first to confirm your key works and to see which
+model ids it can use.
+
+## Tutorials
+
+Each script builds on the previous one. They all import the shared helpers from
+the `livetutorials` package, so there are no hardcoded keys or endpoints.
+
+| # | File | What it adds |
+|---|------|--------------|
+| 00 | `tutorials/00_key_and_secrets.py` (+ `.ipynb`) | The foundation: load your GWDG key from `.env` (auto, via python-dotenv), **list the models** your key can use, send one prompt, print the reply. |
+| 01 | `tutorials/01_gwdg_prompt_template.py` | Wrap the model in a `ChatPromptTemplate` (system + human), build an **LCEL chain** `prompt \| model \| StrOutputParser()`, and **stream** the answer token-by-token. |
+| 02 | `tutorials/02_gwdg_memory_chat.py` | Add **conversation memory**: `RunnableWithMessageHistory` + `MessagesPlaceholder("history")` keyed by `session_id`, so the bot remembers earlier turns in a REPL loop. |
+
+Run any of them from the repo root, e.g.:
+
+```bash
+python tutorials/00_key_and_secrets.py
+```
+
+> Each `main(idx=...)` picks a model by index from the list your key allows; run
+> `00` to see that list, then change `idx` to the model you want.
+
+## The `livetutorials` package
+
+Shared helpers live in `src/livetutorials/chatbot.py` and are re-exported from the
+package, so every tutorial just does `from livetutorials import ...`:
+
+- `get_gwdg_base_url()` / `get_gwdg_api_key()` — endpoint + key from `.env`
+- `list_gwdg_models()` — the model ids your key is allowed to use
+- `get_gwdg_chat_model(model)` — a LangChain chat model on the GWDG endpoint
+- `get_session_history(session_id)` — per-session memory store (used in 02)
 
 ## Docling (PDF → markdown)
 
@@ -41,13 +78,11 @@ LiveTutorials/
 ├── tox.ini                 # test matrix
 ├── .env.example            # copy to .env, fill in (fields left empty)
 ├── .github/workflows/      # CI (manual trigger)
-├── src/livetutorials/      # installable package (currently just scaffolding)
-│   ├── __init__.py
+├── src/livetutorials/      # installable package
+│   ├── __init__.py         # re-exports the GWDG helpers
+│   ├── chatbot.py          # get_gwdg_chat_model, list_gwdg_models, ...
 │   ├── kapoorlab.yaml
 │   └── _tests/
-├── tutorials/              # <- put your tutorial scripts here
-└── data/                   # <- local data / vector DBs (gitignored as needed)
+├── tutorials/              # the tutorial scripts (00, 01, 02, ...)
+└── data/                   # local data / vector DBs (gitignored as needed)
 ```
-
-Add tutorial scripts to `tutorials/` and shared helpers to
-`src/livetutorials/`.
