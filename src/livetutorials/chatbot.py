@@ -23,6 +23,14 @@ DROP_SECTIONS= {
     "Expanded View Figures"
 }
 
+def load_pdf_db(pdf_chroma_path: str = None, embed_model: str = "sentence-transformers/all-mpnet-base-v2"):
+    
+    path = pdf_chroma_path or os.environ.get("PDF_CHROMA_PATH")
+    return Chroma(
+        persist_directory=path,
+        embedding_function=get_mpnet_embedding_function(embed_model)
+    )
+
 def get_mpnet_embedding_function(model_name):
     return HuggingFaceEmbeddings(model_name=model_name)
 

@@ -14,7 +14,8 @@ from .chatbot import (
     get_gwdg_chat_model,
     get_session_history,
     create_database_from_pdf,
-    get_mpnet_embedding_function
+    get_mpnet_embedding_function,
+    load_pdf_db
 )
 from .logos import get_banner
 from .monte_carlo_pi import (
@@ -32,6 +33,7 @@ __all__ = ["__version__",
            "get_banner",
            "create_database_from_pdf",
            "get_mpnet_embedding_function",
+           "load_pdf_db",
            "MonteCarloPi",
            "MonteCarloPiConfig",
            ]
