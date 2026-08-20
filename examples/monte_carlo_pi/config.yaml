@@ -1,0 +1,6 @@
+# Monte Carlo Pi Configuration
+# Example: python examples/monte_carlo_pi/run.py
+
+num_samples: 1000000
+seed: 42
+verbose: true

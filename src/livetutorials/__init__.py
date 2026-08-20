@@ -12,9 +12,16 @@ from .chatbot import (
     get_gwdg_base_url,
     list_gwdg_models,
     get_gwdg_chat_model,
-    get_session_history
+    get_session_history,
+    create_database_from_pdf,
+    get_mpnet_embedding_function
 )
 from .logos import get_banner
+from .monte_carlo_pi import (
+    MonteCarloPi,
+    MonteCarloPiConfig,
+)
+
 
 __all__ = ["__version__",
            "get_gwdg_api_key",
@@ -22,6 +29,9 @@ __all__ = ["__version__",
            "list_gwdg_models",
            "get_gwdg_chat_model",
            "get_session_history",
-           "get_banner"
-           
+           "get_banner",
+           "create_database_from_pdf",
+           "get_mpnet_embedding_function",
+           "MonteCarloPi",
+           "MonteCarloPiConfig",
            ]
