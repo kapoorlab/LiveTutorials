@@ -6,8 +6,8 @@ natural numeric order (gpu-1 < gpu-2 < gpu-10 < node-2 < node-10).
 
 Three tabs (pie charts first, numbers below):
   Partitions — pie charts of per-partition CPU / memory allocation and node
-               states, queue status tiles, then per-partition numbers and the
-               node table.
+               availability, availability tiles, then per-partition numbers
+               and the node table.
   Nodes      — pie charts of one chosen node's memory (allocated vs free)
                and CPU allocation, then numbers and the jobs on the node
                with requested vs measured memory.
@@ -52,6 +52,7 @@ MUTED = "#6b7280"     # subtle labels
 GRID = "#262b36"      # deep slate-gray for "other / unaccounted" remainder slice
 GOOD = "#2e8b68"      # dull sage-emerald: free / available
 CRIT = "#b84a4a"      # dull terracotta-crimson: allocated / in use
+PARTIAL = "#8a6a24"   # dull amber: some nodes free, some busy
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +96,19 @@ def tres_value(tres, field):
         if key.strip() == field:
             return value.strip()
     return None
+
+
+def tres_gpu_count(tres):
+    """Total GPUs allocated in an AllocTRES string (0 when none are listed)."""
+    if not tres or tres in ("(null)", "N/A"):
+        return 0
+    total = 0
+    for part in tres.split(","):
+        key, _, value = part.partition("=")
+        key, value = key.strip(), value.strip()
+        if key.startswith("gres/gpu") and value.isdigit():
+            total += int(value)
+    return total
 
 
 def mem_str_to_gb(text):
@@ -224,8 +238,49 @@ def expand_hostlist(hostlist):
 
 def state_group(state):
     """Normalize an sinfo state to allocated / mixed / idle / other."""
-    s = re.split(r"[*~#%@+]", state)[0]
+    s = re.split(r"[*~#!%@^$+]", state)[0]
     return s if s in ("allocated", "mixed", "idle") else "other"
+
+
+# sinfo state suffixes that take a node out of service even when its base
+# state is idle/mixed: * not responding, ~ powered down, # powering up,
+# ! powering down, % rebooting, @ reboot pending, ^ reboot issued,
+# $ powering down.
+STATE_FLAGS = set("*~#!%@^$")
+
+
+def node_usable(node):
+    """True when the node is in service — the admin has not removed it.
+
+    Drained, down, reserved and completing nodes are out; an allocated node
+    is still in service, it just has nothing free.
+    """
+    return node["state_group"] in ("idle", "mixed", "allocated")
+
+
+def node_available(node):
+    """True when the scheduler can place a new job on this node now.
+
+    Free CPUs are necessary but not sufficient: the node may be drained or
+    rebooting, every GPU may already be allocated, or its allocatable memory
+    may be fully reserved. Partition traffic lights are built from this.
+    """
+    if not node_usable(node) or node["state_group"] not in ("idle", "mixed"):
+        return False
+    if set(node["state"]) & STATE_FLAGS:
+        return False
+    if node["cpus_idle"] <= 0:
+        return False
+
+    gpus_total = sum(node["gpus"].values())
+    if (gpus_total and node["gpus_alloc"] is not None
+            and node["gpus_alloc"] >= gpus_total):
+        return False
+
+    if (node["mem_alloc_gb"] is not None and node["mem_real_gb"]
+            and node["mem_alloc_gb"] >= node["mem_real_gb"]):
+        return False
+    return True
 
 
 @st.cache_data(ttl=REFRESH_SECONDS)
@@ -241,12 +296,16 @@ def collect_nodes():
     scontrol_raw = run_slurm_command(["scontrol", "show", "node", "-o"])
 
     alloc_mem = {}
+    alloc_gpus = {}
     for line in scontrol_raw.splitlines():
         node_match = re.search(r"NodeName=(\S+)", line)
         if not node_match:
             continue
         node = node_match.group(1)
         alloc_mem[node] = mem_str_to_gb(_tres_mem(line))
+        tres_match = re.search(r"AllocTRES=(\S+)", line)
+        alloc_gpus[node] = (tres_gpu_count(tres_match.group(1))
+                            if tres_match else 0)
 
     nodes = []
     seen = set()
@@ -279,6 +338,7 @@ def collect_nodes():
             "mem_free_gb": mb_to_gb(free),
             "mem_alloc_gb": alloc_mem.get(node),
             "gpus": dict(parse_gres(gres)),
+            "gpus_alloc": alloc_gpus.get(node),
             "timelimit": tlimit or "-",
         })
     return nodes
@@ -545,28 +605,44 @@ def section(title, caption=None):
         st.caption(caption)
 
 
-def queue_tiles(part_names, pending, running):
-    """One status tile per partition queue, in a row."""
-    def status(q, r):
-        if q <= 0:
-            return "#161b22", "#9ca3af", "free", "1px solid #30363d"
-        if q <= max(r, 1):
-            return GOOD, "#f9fafb", "not busy", "none"
-        return CRIT, "#f9fafb", "busy", "none"
+def queue_tiles(part_names, availability, pending):
+    """One availability tile per partition, in a row.
 
-    items = [(p, *status(pending.get(p, 0), running.get(p, 0)))
-             for p in part_names]
+    The colour follows the nodes a new job can actually land on, not how
+    many jobs are queued: a partition whose nodes are all busy is red even
+    with an empty queue, and one with free nodes stays green behind a long
+    queue. availability[p] = (free_nodes, total_nodes, in_service_nodes).
+    """
+    def status(free, total, usable, queued):
+        detail = f"{free}/{total} nodes free"
+        if queued:
+            detail += f" · {queued} queued"
+        if not usable:
+            return "#161b22", "#9ca3af", "offline", detail, "1px solid #30363d"
+        if free == 0:
+            return CRIT, "#f9fafb", "busy", detail, "none"
+        if free == total:
+            return GOOD, "#f9fafb", "free", detail, "none"
+        return PARTIAL, "#f9fafb", "partly free", detail, "none"
+
+    items = []
+    for p in part_names:
+        free, total, usable = availability.get(p, (0, 0, 0))
+        items.append((p, *status(free, total, usable, pending.get(p, 0))))
+
     per_row = 6
     for start in range(0, len(items), per_row):
         chunk = items[start:start + per_row]
         cols = st.columns(len(chunk))
-        for col, (name, bg, fg, label, border) in zip(cols, chunk):
+        for col, (name, bg, fg, label, detail, border) in zip(cols, chunk):
             col.markdown(
                 f'<div style="background-color:{bg};color:{fg};'
                 f'border:{border};padding:14px 8px;border-radius:8px;'
                 f'text-align:center;font-weight:600;">{name}'
                 f'<div style="font-weight:400;font-size:13px;'
-                f'margin-top:4px;">{label}</div></div>',
+                f'margin-top:4px;">{label}</div>'
+                f'<div style="font-weight:400;font-size:11px;'
+                f'opacity:.85;">{detail}</div></div>',
                 unsafe_allow_html=True)
 
 
@@ -619,7 +695,7 @@ if __name__ == "__main__":
 
         cpu_rows, mem_rows = [], []
         state_specs = []
-        running_counts = {}
+        availability = {}
         pending = count_pending_jobs()
         for pname in part_names:
             p_nodes = partitions[pname]
@@ -629,12 +705,12 @@ if __name__ == "__main__":
             mem_alloc = sum(n["mem_alloc_gb"] or 0 for n in p_nodes)
             cpu_rows.append((pname, cpus_alloc, cpus_total))
             mem_rows.append((pname, mem_alloc, mem_real))
-            n_idle = sum(1 for n in p_nodes if n["state_group"] == "idle")
-            # binary: a node is either free (idle) or allocated (anything
-            # with jobs on it, including partially-allocated mixed nodes)
-            state_specs.append((pname, [len(p_nodes) - n_idle, n_idle]))
-            running_counts[pname] = sum(1 for j in jobs
-                                        if j["partition"] == pname)
+            # Free means "a new job can land here now": in service, an idle
+            # CPU, and a free GPU on GPU nodes.
+            n_free = sum(1 for n in p_nodes if node_available(n))
+            n_usable = sum(1 for n in p_nodes if node_usable(n))
+            state_specs.append((pname, [len(p_nodes) - n_free, n_free]))
+            availability[pname] = (n_free, len(p_nodes), n_usable)
 
         c1, c2 = st.columns(2)
         with c1:
@@ -646,13 +722,14 @@ if __name__ == "__main__":
                                             cols=2, unit="GB"),
                             width="stretch")
 
-        st.plotly_chart(pie_grid(state_specs, "Nodes by state",
-                                 ("allocated", "free"),
+        st.plotly_chart(pie_grid(state_specs, "Nodes available for jobs",
+                                 ("unavailable", "available"),
                                  (CRIT, GOOD), cols=4, unit="nodes"),
                         width="stretch")
 
-        st.caption("queue status — red = busy, green = not busy, dark = free")
-        queue_tiles(part_names, pending, running_counts)
+        st.caption("partition status — green = every node in the partition free, "
+                   "amber = some free, red = none free, dark = nothing in service")
+        queue_tiles(part_names, availability, pending)
 
         # ---- numbers below ----
         section("Partition details", "numbers behind the charts above")

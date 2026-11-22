@@ -5,18 +5,19 @@ The command reference for the coursework in
 [`hpc_tutorials.ipynb`](tutorials/hpc_tutorials/hpc_tutorials.ipynb) runs
 each monitoring script against your cluster and shows what it found, and
 [`hpc_dashboard.py`](tutorials/hpc_tutorials/hpc_dashboard.py) is the live
-dashboard it all feeds (deployed in the notebook's last cell).
+dashboard it all feeds (deployed in notebook §10 and §12 below).
 
 No cluster at hand? The tutorial folder bundles `fake_slurm/` — the
 fictional **kapoorlabs-fr** organization (France): GPU nodes named after
 their GPUs (`h100-*`, `h200-*`, `b200-*`) plus `cpu-*` nodes — so every
 command below can be tried locally. All sample outputs in this file come
-from that cluster. To use it, put the fake directory first on your
-`PATH`:
+from that cluster. To use it, put the fake directory first on your `PATH`
+and point `SLURM_CONF` at its `slurm.conf`:
 
 ```bash
 cd tutorials/hpc_tutorials
 export PATH="$PWD/fake_slurm:$PATH"
+export SLURM_CONF="$PWD/fake_slurm/slurm.conf"
 ```
 
 Now `squeue`, `sinfo`, `scontrol`, `sstat`, `sacct` and `sacctmgr` answer
@@ -38,6 +39,60 @@ compute nodes, the controller already knows everything.
 | `scontroller_nodes.py` | `scontrol show node` |
 | `slurm_job_checker.py` | `sacct`, `scontrol show job` |
 | `hpc_dashboard.py` | `sinfo`, `squeue`, `scontrol`, `sstat`, `sacct` |
+
+---
+
+## 0. The path from your laptop to a compute node
+
+```mermaid
+flowchart LR
+    subgraph laptop["Your computer"]
+        U["you<br/>at a terminal"]
+    end
+
+    subgraph cluster["Slurm cluster: kapoorlabs-fr"]
+        L["login node<br/>submit host"]
+        S["slurmctld<br/>the scheduler"]
+        subgraph part["partition h100"]
+            N["h100-4<br/>idle — 32 CPUs free"]
+        end
+    end
+
+    U -->|"1. ssh user@login"| L
+    L -->|"2. salloc -p h100 --gres=gpu:1"| S
+    S -->|"3. reserves the node<br/>allocation stays held"| N
+    L -->|"4. srun --pty bash"| S
+    S -->|"5. launches the job step"| N
+```
+
+Read it as two planes:
+
+- **You sit on the login node.** `ssh` gets you there; `sinfo`, `squeue`,
+  `scontrol`, `sacct` and `sacctmgr` ask the controller and never touch a
+  compute node.
+- **`salloc` asks the controller for resources.** The allocation is held
+  for you as a job (with a `SLURM_JOB_ID`), and `srun --pty bash` launches
+  the step that puts a shell on the allocated node. Without `salloc`, a
+  single `srun --pty bash` does steps 2–5 in one command.
+
+> **On the fake cluster** the box is local: `fake_slurm/` replaces every
+> command in the diagram, so the same path runs with no SSH and no cluster.
+
+### Where the notebook sections live in this file
+
+| Notebook | Here |
+|---|---|
+| Setup | intro, above |
+| 1 · `sinfo` | §2 |
+| 2 · free capacity, `srun` / `salloc` | §2 (free-node rules) and §9 (`srun` / `salloc`) |
+| 3 · `scontrol show node` | §3 |
+| 4 · `squeue` | §4 |
+| 5 · `scontrol show job` | §5 |
+| 6 · `sstat` | §6 |
+| 7 · `sacct` + job checker | §7 |
+| 8 · `sacctmgr` | §8 |
+| 9 · cheat sheet | §10 |
+| 10 · dashboard | §12 |
 
 ---
 
@@ -109,15 +164,25 @@ sinfo -h                                # "is the controller up?" probe
 
 Reading rules:
 - A node in several partitions prints **once per partition** — merge rows.
-- State flags append: `allocated*` (default partition), `idle~` (powered
-  off), `mixed@` (starting a job). Strip, then classify: `idle` = free;
-  `allocated`/`mixed` = busy; `down`/`drained`/`draining` = needs admin.
+- The `*` in `%P` marks the default partition. The **state** in `%T` has its
+  own suffix flags: `*` not responding, `~` powered down, `#` powering up,
+  `!` powering down, `%` rebooting, `@` reboot pending, `^` reboot issued,
+  `$` powering down. Strip the flags before classifying.
+- Classify the base state: `idle` = nothing running; `mixed` = some CPUs
+  free; `allocated` = no free CPUs; `down` / `drained` / `draining` = out of
+  service (read `Reason=`). Only `idle` / `mixed` nodes with free resources
+  can take a new job.
 - `real (%m) − free (%e)` is *used*, and is **not** all jobs — the kernel
   grabs spare RAM for page cache and reclaims it on demand.
 - GRES strings pack type, memory, count and a sharing suffix
   (`gpu:h100.80gb:8(S:0-1)`) — parse with a regex that stops before the
   suffix, and count GPUs over **unique** nodes so nodes in two partitions
   are not double-counted.
+
+`show_free_nodes.py` applies exactly these rules: keep nodes with idle
+CPUs, drop `drained` / `down` / `failed` nodes, sort fully `idle` nodes
+first and then by idle CPU count, and print a ready-to-paste `srun` for the
+best GPU node and the best CPU-only node.
 
 ## 3. scontrol show node — what the scheduler promised
 
@@ -126,6 +191,7 @@ Used by `scontroller_nodes.py`, `hpc_dashboard.py`.
 ```bash
 scontrol show node h100-1     # one node, human-readable block
 scontrol show node -o         # one line per node — parse-friendly
+scontrol show node b200-2     # not serving — read Reason=
 ```
 
 ```
@@ -150,6 +216,10 @@ DRAIN/DOWN in state  → broken       (read Reason)
 ALLOC/MIXED in state → busy
 otherwise            → free
 ```
+
+The script's summary counts any node with a running job as busy. For
+*placement*, `mixed` is only partly busy: it still has free CPUs — and, for
+the dashboard's traffic lights, needs a free GPU too.
 
 ## 4. squeue — running and waiting jobs
 
@@ -176,7 +246,8 @@ squeue -h -t RUNNING -o "%i|%u|%j|%N|%P|%C|%m|%b|%M|%L"
 | `%M` / `%L` | runtime / time left |
 
 ```bash
-squeue -h -t PENDING -o "%P"    # one partition name per queued job → queue depth
+squeue -h -t PENDING -o "%P"    # one partition name per queued job
+squeue -h -t PENDING -o "%P" | sort | uniq -c | sort -rn   # queue depth per partition
 ```
 
 A pending job's reason (`squeue -o "%i %R"`) answers "why is it waiting":
@@ -269,12 +340,12 @@ sacctmgr -nP show associations user=varun format=Account,Partition,QOS
 Access = account + partition + QOS. A pending job with a `QOS*Limit*`
 reason is limited here, not by resources.
 
-## 9. srun and scancel — acting through the scheduler
+## 9. srun, salloc and scancel — acting through the scheduler
 
 Recommended by `show_free_nodes.py` for landing on a free node:
 
 ```bash
-srun --nodelist=h100-4 --gres=gpu:1 --pty bash    # interactive shell with a GPU
+srun --nodelist=h200-3 --gres=gpu:1 --pty bash    # interactive shell with a GPU
 srun --nodelist=cpu-2 --pty bash                   # interactive shell, CPU node
 scancel 10020                                      # kill one job
 ```
@@ -282,7 +353,55 @@ scancel 10020                                      # kill one job
 `srun -w <node> --pty bash` is the safe admin way to land on a node — it
 goes through the scheduler, unlike SSH, which many clusters forbid.
 
-## 10. Reading memory like a sysadmin
+`srun` creates an allocation and runs one step in it; the allocation ends
+with that step. `salloc` creates the allocation and keeps it alive across
+steps. Its default shell normally starts on the submit host, so get onto a
+compute node with `srun --pty bash`; every `srun` inside shares the
+allocation, and `exit` or `scancel` releases it:
+
+```bash
+salloc --partition=h100 --gres=gpu:1 --cpus-per-task=8 --mem=64G
+srun --pty bash             # compute-node shell, allocation's CPUs/memory
+srun python train.py        # runs in the held allocation
+srun python evaluate.py
+exit                        # releases the allocation
+```
+
+So `salloc` then `srun --pty bash` is a valid way to get an interactive
+shell with all the allocated CPUs and memory; the difference from a plain
+`srun --pty bash` is lifecycle, not capability. Steps inherit
+`SLURM_CPUS_PER_TASK` and are capped by the job's memory reservation, so
+`salloc -c 8 --mem=64G` plus `srun --pty bash` gives 8 CPUs and 64 GB;
+`--exclusive` gives a step the whole allocated share.
+
+An idle `salloc` still occupies the nodes — it appears as a job in
+`squeue`, and other users queue behind it. `sbatch job.sh` is the third
+form: hand the scheduler a script and return; the allocation ends when the
+script does.
+
+## 10. Cheat sheet
+
+| I want to know… | Command |
+|---|---|
+| What hardware exists | `sinfo -N -o "%N %P %C %m %G %T"` |
+| Which nodes are free | `sinfo` + the free-node script (idle CPUs, not drained) |
+| Where to run right now | `python show_free_nodes.py` → `srun --nodelist=… --pty bash` |
+| Hold an allocation for several steps | `salloc --partition=… --gres=gpu:1` → `srun …` → `exit` |
+| What a node has reserved | `scontrol show node <node>` (`AllocTRES`) |
+| What is running | `squeue -o "%i %u %j %N %P %C %M %L"` |
+| Why my job is pending | `squeue -o "%i %R"` |
+| What a job requested | `scontrol show job <jobid>` (`MinMemory`, `TresPerNode`) |
+| How much memory it uses | `sstat -j <jobid> --format=JobID,MaxRSS` |
+| What happened to a job | `sacct -j <jobid> -X -o JobID,State,ExitCode` |
+| What I may run | `sacctmgr -nP show associations user=$USER format=Account,Partition,QOS` |
+| Kill a job | `scancel <jobid>` |
+
+**The one rule that prevents most wrong answers:** a free CPU count is not
+permission to run. Check the node state (`drained`?), the user's association
+(`sacctmgr`), and the job record (`scontrol show job`) before concluding
+anything.
+
+## 11. Reading memory like a sysadmin
 
 Three different numbers, all correct:
 
@@ -297,3 +416,33 @@ idle node is *normal*. The alarm case is jobs that **measured** (sstat /
 sacct) far more than they **requested** — OOM risk for neighbours on
 nodes without cgroup enforcement. The dashboard's node tab and its
 "memory eaters" table are built around exactly this distinction.
+
+## 12. The live dashboard — hpc_dashboard.py
+
+Everything above, live, in a browser: three tabs (partitions, node detail,
+top jobs) built from the same commands, with nothing hardcoded to one
+cluster.
+
+The partition tiles are lit from **node-level availability** — in service,
+an idle CPU, and a free GPU on GPU nodes — not from queue depth. A long
+queue on free hardware stays green; an empty queue on full hardware goes
+red.
+
+Deploy it on the head node:
+
+```bash
+streamlit run hpc_dashboard.py        # serves on port 8501
+```
+
+Reach it from your laptop with an SSH tunnel:
+
+```bash
+ssh -N -L 8501:localhost:8501 <user>@<headnode>
+```
+
+Then open **http://localhost:8501**.
+
+> **Tunnel caveat:** auto-refresh does not travel through the tunnel
+> reliably. The page fetches new data when you interact with it or press
+> *Refresh now*, not on a timer.
+
