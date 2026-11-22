@@ -12,8 +12,10 @@ else:
     state = "RUNNING"
 
 if state == "PENDING":
+    # real squeue prints one line per queued job
     for part, count in PENDING.items():
-        print(part)
+        for _ in range(count):
+            print(part)
     sys.exit(0)
 
 partition = None
