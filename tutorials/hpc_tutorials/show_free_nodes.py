@@ -13,6 +13,15 @@ def get_node_info():
         sys.exit(1)
     return result.stdout.strip().split('\n')
 
+def state_base(state):
+    """Strip Slurm's one-character state flags: idle*, allocated~, ..."""
+    return state.rstrip('*~@#$%!')
+
+def is_usable(state):
+    """A node with free CPUs is still unusable if admin took it out."""
+    return not any(s in state_base(state).lower()
+                   for s in ('down', 'drain', 'fail', 'maint', 'unknown', 'power'))
+
 def parse_nodes(lines):
     """Parse sinfo output into node info."""
     nodes = []
@@ -86,8 +95,11 @@ def main():
     lines = get_node_info()
     nodes = parse_nodes(lines)
 
-    # Filter to nodes with idle CPUs
-    available = [n for n in nodes if n['idle'] > 0]
+    # Nodes with free CPUs that the scheduler may actually place work on.
+    # Drained/down nodes report idle CPUs too — never recommend those.
+    available = [n for n in nodes if n['idle'] > 0 and is_usable(n['state'])]
+    # Best first: fully idle nodes, then by number of idle CPUs.
+    available.sort(key=lambda n: (state_base(n['state']) != 'idle', -n['idle']))
 
     if show_gpu or show_all:
         print("\n=== GPU NODES ===\n")

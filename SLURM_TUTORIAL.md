@@ -7,11 +7,26 @@ each monitoring script against your cluster and shows what it found, and
 [`hpc_dashboard.py`](tutorials/hpc_tutorials/hpc_dashboard.py) is the live
 dashboard it all feeds (deployed in the notebook's last cell).
 
-No cluster at hand? The notebook bundles `fake_slurm/` — the fictional
-**kapoorlabs-fr** organization (France): GPU nodes named after their GPUs
-(`h100-*`, `h200-*`, `b200-*`) plus `cpu-*` nodes — so every command below
-can be tried locally. All sample outputs in this file come from that
-cluster.
+No cluster at hand? The tutorial folder bundles `fake_slurm/` — the
+fictional **kapoorlabs-fr** organization (France): GPU nodes named after
+their GPUs (`h100-*`, `h200-*`, `b200-*`) plus `cpu-*` nodes — so every
+command below can be tried locally. All sample outputs in this file come
+from that cluster. To use it, put the fake directory first on your
+`PATH`:
+
+```bash
+cd tutorials/hpc_tutorials
+export PATH="$PWD/fake_slurm:$PATH"
+```
+
+Now `squeue`, `sinfo`, `scontrol`, `sstat`, `sacct` and `sacctmgr` answer
+from kapoorlabs-fr on your own machine (open a new shell to undo it).
+For the coursework itself, run the notebook:
+
+```bash
+cd tutorials/hpc_tutorials
+jupyter lab hpc_tutorials.ipynb
+```
 
 Every command runs on a **login node**: none need root and none SSH into
 compute nodes, the controller already knows everything.

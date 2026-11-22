@@ -1,3 +1,6 @@
+defaults:
+  - override hydra/job_logging: none   # no <job>.log files in the run dir
+
 # hpc_info.py configuration (HpcInfoConfig dataclass)
 gpu_only: false
 extras: false
