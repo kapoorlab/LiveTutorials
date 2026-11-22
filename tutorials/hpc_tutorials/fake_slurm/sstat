@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+"""Fake sstat for the fictional kapoorlabs-fr cluster."""
+import sys
+
+from cluster_data import JOBS
+
+args = sys.argv[1:]
+
+ids = []
+if "-j" in args:
+    ids = [j.strip() for j in args[args.index("-j") + 1].split(",")]
+
+for j in JOBS:
+    jid, rss = j[0], j[14]
+    if not rss:
+        continue
+    if ids:
+        base = [i.split(".")[0] for i in ids]
+        if jid not in base:
+            continue
+    print(f"{jid}.batch|{rss}")

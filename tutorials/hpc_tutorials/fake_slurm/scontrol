@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""Fake scontrol for the fictional kapoorlabs-fr cluster."""
+import sys
+
+from cluster_data import NODES, NODE_REASON, JOBS, job_by_id
+
+args = sys.argv[1:]  # e.g. show node -o | show node h100-1 | show job 2001
+
+if len(args) < 2 or args[0] != "show":
+    sys.exit(0)
+
+what, rest = args[1], args[2:]
+target = None
+for a in rest:
+    if a not in ("-o", "-od", "-d", "-dd", "--details", "--oneliner"):
+        target = a
+        break
+
+
+def node_line(n):
+    node, part, cpus, mem, free, gres, tlimit, state, real, alloc = n
+    alloc_cpus = int(cpus.split("/")[0])
+    total_cpus = cpus.split("/")[3]
+    s = (f"NodeName={node} Arch=x86_64 CoresPerSocket=32 "
+         f"CPUAlloc={alloc_cpus} CPUTot={total_cpus} "
+         f"RealMemory={real} State={state} ")
+    if node in NODE_REASON:
+        s += f"Reason={NODE_REASON[node]} "
+    s += (f"Partitions={part.rstrip('*')} "
+          f"CfgTRES=cpu/{total_cpus},mem/{real}M,billing/{total_cpus} ")
+    if alloc != "0":
+        s += f"AllocTRES=cpu={alloc_cpus},mem={alloc}"
+        if gres not in ("(null)", "", "N/A"):
+            gp = gres.replace("gpu:", "").replace("(S:0-1)", "")
+            gtype, gcount = gp.rsplit(":", 1)
+            s += f",gres/gpu={gcount}"
+        s += " "
+    else:
+        s += "AllocTRES= "
+    s += f"Gres={gres} "
+    s += "AvailableFeatures=gpu,large-mem,x86_64 "
+    s += "ActiveFeatures=gpu,large-mem"
+    return s
+
+
+def job_line(j):
+    # running-job tuple: jid, user, name, nodes, part, cpus, mem, gres,
+    # runtime, timeleft, minmem, percpu, gpus, state
+    (jid, user, name, nodes, part, cpus, mem, gres, rt, tl,
+     minmem, percpu, gpus, state) = j[:14]
+    s = (f"JobId={jid} UserId={user}(42) GroupId=kapoorlabs(42) "
+         f"JobName={name} ")
+    if state == "RUNNING":
+        s += (f"RunTime={rt} TimeLimit={tl} "
+              f"StartTime=2026-11-22T08:00:00 EndTime=2026-11-22T20:00:00 ")
+    else:
+        s += "RunTime=00:00:00 TimeLimit=01:00:00 "
+    if percpu:
+        s += f"MinCPUsMemory={percpu}M "
+    s += f"MinMemory={minmem} "
+    if gpus:
+        s += f"TresPerNode=gres:gpu:{gpus} "
+    s += (f"Command=./{name}.sh WorkDir=/home/{user}/jobs "
+          f"StdOut=/home/{user}/jobs/{jid}.out "
+          f"NodeList={nodes} Partition={part} NumCPUs={cpus} State={state}")
+    return s
+
+
+def history_line(h):
+    jid, user, name, part, state, exitcode, cpu, node, rss = h
+    return (f"JobId={jid} UserId={user}(42) JobName={name} "
+            f"RunTime={cpu} TimeLimit=01:00:00 "
+            f"MinMemory=0 NodeList={node} Partition={part} State={state} "
+            f"ExitCode={exitcode}")
+
+
+if what == "node":
+    for n in NODES:
+        if target and not target.startswith("-") and n[0] != target:
+            continue
+        print(node_line(n))
+
+elif what in ("job", "jobid"):
+    if target and not target.startswith("-"):
+        j = job_by_id(target)
+        if j:
+            print(job_line(j) if len(j) == 15 else history_line(j))
+    else:
+        for j in JOBS:
+            print(job_line(j))
+        # finished jobs have rotated out of the controller -> sacct has them

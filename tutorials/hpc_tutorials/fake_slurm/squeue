@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""Fake squeue for the fictional kapoorlabs-fr cluster."""
+import sys
+
+from cluster_data import JOBS, PENDING
+
+args = sys.argv[1:]
+
+if "-t" in args:
+    state = args[args.index("-t") + 1]
+else:
+    state = "RUNNING"
+
+if state == "PENDING":
+    for part, count in PENDING.items():
+        print(part)
+    sys.exit(0)
+
+partition = None
+if "-p" in args:
+    partition = args[args.index("-p") + 1]
+
+fmt = "%i"
+for i, a in enumerate(args):
+    if a == "-o" and i + 1 < len(args):
+        fmt = args[i + 1]
+
+cols = [c.strip("'\"") for c in fmt.split("|")]
+
+FIELD = {
+    "%i": lambda j: j[0],
+    "%u": lambda j: j[1],
+    "%j": lambda j: j[2],
+    "%N": lambda j: j[3],
+    "%P": lambda j: j[4],
+    "%C": lambda j: str(j[5]),
+    "%m": lambda j: j[6],
+    "%b": lambda j: j[7],
+    "%M": lambda j: j[8],
+    "%L": lambda j: j[9],
+    "%A": lambda j: j[0],
+    "%a": lambda j: "normal",
+}
+
+for j in JOBS:
+    if j[13] != "RUNNING":
+        continue
+    if partition and j[4] != partition:
+        continue
+    print("|".join(FIELD[c](j) for c in cols))

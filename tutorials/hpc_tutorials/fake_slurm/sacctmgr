@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""Fake sacctmgr for the fictional kapoorlabs-fr cluster."""
+import sys
+
+from cluster_data import ASSOCIATIONS
+
+args = sys.argv[1:]
+
+user = None
+fmt = "Account,Partition,QOS"
+for i, a in enumerate(args):
+    if a.startswith("user="):
+        user = a.split("=", 1)[1]
+    if a == "format" and i + 1 < len(args):
+        fmt = args[i + 1]
+    if a.startswith("format="):
+        fmt = a.split("=", 1)[1]
+
+cols = [c.strip() for c in fmt.split(",")]
+
+if user and user in ASSOCIATIONS:
+    acct, part, qos = ASSOCIATIONS[user]
+else:
+    acct, part, qos = "kapoorlabs", "ALL", "normal"
+
+VALUES = {"Account": acct, "Partition": part, "QOS": qos}
+print("|".join(VALUES.get(c, "") for c in cols))

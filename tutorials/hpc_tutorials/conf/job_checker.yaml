@@ -1,0 +1,9 @@
+# slurm_job_checker.py configuration (JobCheckerConfig dataclass)
+users: [varun, sofie]
+hours: 24
+output: ""
+
+hydra:
+  output_subdir: null   # no .hydra/ sidecar directory
+  run:
+    dir: .               # run in place, no outputs/ litter

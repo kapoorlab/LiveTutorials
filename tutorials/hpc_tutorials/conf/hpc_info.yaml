@@ -1,0 +1,9 @@
+# hpc_info.py configuration (HpcInfoConfig dataclass)
+gpu_only: false
+extras: false
+user: ""               # empty falls back to $USER
+
+hydra:
+  output_subdir: null   # no .hydra/ sidecar directory
+  run:
+    dir: .               # run in place, no outputs/ litter

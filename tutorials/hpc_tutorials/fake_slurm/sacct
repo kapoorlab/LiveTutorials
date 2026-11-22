@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""Fake sacct for the fictional kapoorlabs-fr cluster."""
+import re
+import sys
+
+from cluster_data import JOBS, HISTORY
+
+args = sys.argv[1:]
+
+
+def flag(name, default=None):
+    if name in args:
+        return args[args.index(name) + 1]
+    for a in args:
+        if a.startswith(f"--{name}="):
+            return a.split("=", 1)[1]
+    return default
+
+
+def fmt_fields():
+    for i, a in enumerate(args):
+        if a in ("-o", "--format") and i + 1 < len(args):
+            return [f.strip() for f in args[i + 1].split(",")]
+    for a in args:
+        if a.startswith("--format="):
+            return [f.strip() for f in a.split("=", 1)[1].split(",")]
+    return ["JobID"]
+
+
+ids = flag("-j")
+user = flag("-u")
+partition = flag("-p", flag("--partition"))
+fields = fmt_fields()
+parsable = "-P" in args or "--parsable2" in args or any(
+    a.startswith("--parsable") for a in args)
+noheader = "-n" in args or "--noheader" in args
+
+rows = []
+
+
+def job_row(jid, user_name, name, part, nodes, state, exitcode, cpu, rss,
+            start, end):
+    VALUES = {
+        "JobID": jid,
+        "JobName": name,
+        "User": user_name,
+        "State": state,
+        "ExitCode": exitcode,
+        "Elapsed": cpu,
+        "TotalCPU": cpu,
+        "Start": start,
+        "End": end,
+        "NodeList": nodes,
+        "Partition": part,
+        "Submit": start,
+        "MaxRSS": rss or "",
+        "CPUEntRaw": "0",
+        "AveRSS": rss or "",
+    }
+    return [VALUES.get(f, "") for f in fields]
+
+
+if ids:
+    wanted = [i.split(".")[0] for i in ids.split(",")]
+    for j in JOBS:
+        if j[0] in wanted:
+            rows.append(job_row(j[0], j[1], j[2], j[4], j[3], j[13],
+                                "0:0", "00:00:00", j[14],
+                                "2026-11-22T08:00:00", "Unknown"))
+else:
+    for j in JOBS:
+        if j[13] != "RUNNING":
+            continue
+        if user and j[1] != user:
+            continue
+        if partition and j[4] != partition:
+            continue
+        rows.append(job_row(j[0], j[1], j[2], j[4], j[3], j[13], "0:0",
+                            j[8], j[14],
+                            "2026-11-22T08:00:00", "Unknown"))
+    if not ids:
+        for h in HISTORY:
+            if user and h[1] != user:
+                continue
+            if partition and h[3] != partition:
+                continue
+            rows.append(job_row(h[0], h[1], h[2], h[3], h[7], h[4], h[5],
+                                h[6], h[8],
+                                "2026-11-18T09:00:00", "2026-11-19T09:00:00"))
+
+sep = "|" if parsable else " "
+if not noheader:
+    print(sep.join(fields))
+for r in rows:
+    print(sep.join(str(x) for x in r))

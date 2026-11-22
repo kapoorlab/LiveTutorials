@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""Fake sinfo for the fictional kapoorlabs-fr cluster."""
+import re
+import sys
+
+from cluster_data import NODES
+
+args = sys.argv[1:]
+
+if args == ["-h"]:
+    print("slurm 23.02.4")
+    sys.exit(0)
+
+fmt = ""
+for i, a in enumerate(args):
+    if a == "-o" and i + 1 < len(args):
+        fmt = args[i + 1]
+        break
+
+state_filter = None
+if "--state" in args:
+    state_filter = args[args.index("--state") + 1]
+
+FIELD = {
+    "%N": lambda n: n[0],
+    "%P": lambda n: n[1],
+    "%n": lambda n: n[0],
+    "%c": lambda n: n[2].split("/")[3],
+    "%C": lambda n: n[2],
+    "%m": lambda n: str(n[3]),
+    "%e": lambda n: str(n[4]),
+    "%G": lambda n: n[5],
+    "%l": lambda n: n[6],
+    "%T": lambda n: n[7],
+    "%E": lambda n: NODE_REASON.get(n[0], ""),
+}
+FIELD["%P"] = lambda n: n[1]  # keep the default-partition '*'
+
+parts = re.findall(r"%[NPncCmelGTE]", fmt) or ["%N", "%P", "%T"]
+sep = "|" if "|" in fmt else " "
+
+for n in NODES:
+    if state_filter and not any(
+            s in n[7] for s in state_filter.split(",")):
+        continue
+    print(sep.join(FIELD[p](n) for p in parts))
